@@ -58,12 +58,11 @@
         <option value="as">Assamese</option>
         <option value="bn">Bengali</option>
         <option value="bho">Bhojpuri</option>
-        <option value="ta">tamil</option>
+        <option value="ta">Tamil</option>
         <option value="pa">Punjabi</option>
         <option value="or">Odia</option>
         <option value="ja">Japanese</option>
         <option value="kn">Kannada</option>
-        
     </select>
 
     <br>
@@ -78,6 +77,8 @@
 </div>
 
 <script>
+const BACKEND_URL = "https://smart-voice-translator-using-python.onrender.com";
+
 let mediaRecorder;
 let audioChunks = [];
 
@@ -90,34 +91,45 @@ async function startRecording() {
     mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
 }
 
-function stopRecording() {
+async function stopRecording() {
+    if (!mediaRecorder) return alert("Recording has not started!");
     mediaRecorder.stop();
 
     mediaRecorder.onstop = async () => {
-        const blob = new Blob(audioChunks, { type: "audio/wav" });
-        const formData = new FormData();
+        try {
+            const blob = new Blob(audioChunks, { type: "audio/wav" });
+            const formData = new FormData();
+            formData.append("audio", blob);
+            formData.append("target_lang", document.getElementById("language").value);
 
-        formData.append("audio", blob);
-        formData.append("target_lang", document.getElementById("language").value);
+            const response = await fetch(`${BACKEND_URL}/process_audio`, {
+                method: "POST",
+                body: formData
+            });
 
-        const response = await fetch("/process_audio", {
-            method: "POST",
-            body: formData
-        });
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
 
-        const data = await response.json();
+            const data = await response.json();
 
-        if (data.error) {
-            alert(data.error);
-            return;
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+
+            document.getElementById("original").innerText = data.original_text;
+            document.getElementById("translated").innerText = data.translated_text;
+
+            // Play translated audio
+            const audio = document.getElementById("audioPlayer");
+            audio.src = `${BACKEND_URL}${data.audio_url}?t=${Date.now()}`;
+            audio.play();
+
+        } catch (err) {
+            console.error(err);
+            alert("Failed to process audio: " + err.message);
         }
-
-        document.getElementById("original").innerText = data.original_text;
-        document.getElementById("translated").innerText = data.translated_text;
-
-        const audio = document.getElementById("audioPlayer");
-        audio.src = data.audio_url + "?t=" + new Date().getTime();
-        audio.play();
     };
 }
 </script>
