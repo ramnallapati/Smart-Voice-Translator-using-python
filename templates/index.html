@@ -1,140 +1,148 @@
-import os
-import sys
-import asyncio
-from flask import Flask, render_template, request, jsonify, send_file
-from faster_whisper import WhisperModel
-from deep_translator import GoogleTranslator
-import edge_tts
-from flask_cors import CORS
-
-# Windows asyncio fix
-if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-app = Flask(__name__)
-
-# -------------------------
-# CORS setup — single unified config
-# -------------------------
-CORS(app, origins=[
-    "https://smart-voice-translator-using-python.vercel.app",
-    "https://relaxed-bunny-932279.netlify.app"
-], supports_credentials=True)
-
-RECORD_FOLDER = "record_videos"
-SPEAK_FOLDER = "speaking_video"
-
-os.makedirs(RECORD_FOLDER, exist_ok=True)
-os.makedirs(SPEAK_FOLDER, exist_ok=True)
-
-# -------------------------
-# Load Whisper model
-# -------------------------
-print("Loading Whisper model...")
-model = WhisperModel("base", device="auto", compute_type="auto")
-print("Model Loaded Successfully")
-
-# -------------------------
-# Speech to Text
-# -------------------------
-def speech_to_text(audio_path):
-    segments, info = model.transcribe(audio_path)
-    full_text = " ".join(segment.text for segment in segments)
-    return full_text.strip(), info.language
-
-# -------------------------
-# Text to Speech
-# -------------------------
-async def text_to_audio(text, voice, output_path):
-    tts = edge_tts.Communicate(text, voice=voice)
-    await tts.save(output_path)
-
-# -------------------------
-# Routes
-# -------------------------
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-@app.route("/process_audio", methods=["POST", "OPTIONS"])
-def process_audio():
-    if request.method == "OPTIONS":
-        return "", 204
-
-    try:
-        if "audio" not in request.files:
-            return jsonify({"error": "No audio file provided."}), 400
-
-        audio_file = request.files["audio"]
-        target_lang = request.form.get("target_lang", "en")
-
-        input_path = os.path.join(RECORD_FOLDER, "record.wav")
-        output_path = os.path.join(SPEAK_FOLDER, "output.mp3")
-
-        audio_file.save(input_path)
-
-        # 1. Detect + Transcribe
-        text, detected_lang = speech_to_text(input_path)
-        if not text:
-            return jsonify({"error": "No speech detected."}), 400
-
-        # 2. Translate
-        translated_text = GoogleTranslator(source=detected_lang, target=target_lang).translate(text)
-
-        # 3. Voice Mapping
-        voice_map = {
-            "en": "en-US-AriaNeural",
-            "te": "te-IN-ShrutiNeural",
-            "hi": "hi-IN-SwaraNeural",
-            "ur": "ur-PK-UzmaNeural",
-            "as": "as-IN-YashicaNeural",
-            "bn": "bn-IN-TanishaaNeural",
-            "ta": "ta-IN-PallaviNeural",
-            "pa": "pa-IN-OjasNeural",
-            "ja": "ja-JP-NanamiNeural",
-            "kn": "kn-IN-SapnaNeural",
-            "or": "or-IN-SubhasiniNeural",
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Language Translator</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial;
+            background: linear-gradient(135deg, #4e73df, #1cc88a);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
         }
-        selected_voice = voice_map.get(target_lang, "en-US-AriaNeural")
+        .card {
+            background: blueviolet;
+            padding: 40px;
+            border-radius: 15px;
+            width: 420px;
+            text-align: center;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+            color: white;
+        }
+        button, select {
+            padding: 10px;
+            margin: 10px;
+            border-radius: 6px;
+            border: none;
+        }
+        button {
+            background: #4e73df;
+            color: white;
+            cursor: pointer;
+            font-size: 15px;
+        }
+        button:hover { background: #2e59d9; }
+        audio { width: 100%; margin-top: 15px; }
+        #status { font-style: italic; color: #ffe; margin-top: 8px; min-height: 20px; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h2>🎤 Smart Voice Translator</h2>
 
-        # 4. Generate Audio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(text_to_audio(translated_text, selected_voice, output_path))
-        loop.close()
+    <select id="language">
+        <option value="en">English</option>
+        <option value="te">Telugu</option>
+        <option value="hi">Hindi</option>
+        <option value="ur">Urdu</option>
+        <option value="as">Assamese</option>
+        <option value="bn">Bengali</option>
+        <option value="ta">Tamil</option>
+        <option value="pa">Punjabi</option>
+        <option value="or">Odia</option>
+        <option value="ja">Japanese</option>
+        <option value="kn">Kannada</option>
+    </select>
 
-        # 5. Delete input file immediately
-        if os.path.exists(input_path):
-            os.remove(input_path)
+    <br>
 
-        return jsonify({
-            "original_text": text,
-            "translated_text": translated_text,
-            "audio_url": "/get_audio"
-        })
+    <button id="startBtn" onclick="startRecording()">🎙️ Start</button>
+    <button id="stopBtn" onclick="stopRecording()" disabled>⏹️ Stop</button>
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    <p id="status"></p>
+    <p><b>Detected:</b> <span id="original"></span></p>
+    <p><b>Translated:</b> <span id="translated"></span></p>
 
+    <audio id="audioPlayer" controls></audio>
+</div>
 
-@app.route("/get_audio", methods=["GET", "OPTIONS"])
-def get_audio():
-    if request.method == "OPTIONS":
-        return "", 204
+<script>
+    let mediaRecorder;
+    let audioChunks = [];
 
-    output_path = os.path.join(SPEAK_FOLDER, "output.mp3")
-    if not os.path.exists(output_path):
-        return jsonify({"error": "Audio not found."}), 404
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn  = document.getElementById("stopBtn");
+    const status   = document.getElementById("status");
 
-    response = send_file(output_path, mimetype="audio/mpeg")
+    const BACKEND_URL = "https://smart-voice-translator-using-python.onrender.com";
 
-    @response.call_on_close
-    def cleanup():
-        if os.path.exists(output_path):
-            os.remove(output_path)
+    async function startRecording() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
 
-    return response
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.start();
 
+            startBtn.disabled = true;
+            startBtn.style.background = "green";
+            stopBtn.disabled = false;
+            stopBtn.style.background = "#e74c3c";
+            status.innerText = "Recording...";
+        } catch (err) {
+            alert("Microphone access denied: " + err.message);
+        }
+    }
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    function stopRecording() {
+        if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+
+        startBtn.disabled = false;
+        startBtn.style.background = "#4e73df";
+        stopBtn.disabled = true;
+        stopBtn.style.background = "#4e73df";
+        status.innerText = "Processing...";
+
+        mediaRecorder.onstop = async () => {
+            const blob = new Blob(audioChunks, { type: "audio/wav" });
+            const formData = new FormData();
+            formData.append("audio", blob, "record.wav");
+            formData.append("target_lang", document.getElementById("language").value);
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/process_audio`, {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert("Error: " + data.error);
+                    status.innerText = "";
+                    return;
+                }
+
+                document.getElementById("original").innerText   = data.original_text;
+                document.getElementById("translated").innerText = data.translated_text;
+
+                const audio = document.getElementById("audioPlayer");
+                audio.src = `${BACKEND_URL}${data.audio_url}?t=${Date.now()}`;
+                audio.play();
+                status.innerText = "Done!";
+
+            } catch (err) {
+                alert("Error connecting to backend: " + err.message);
+                status.innerText = "";
+            }
+        };
+    }
+</script>
+</body>
+</html>
