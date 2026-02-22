@@ -247,7 +247,7 @@ Distributed under the **Apache 2.0 License**. See [`LICENSE`](LICENSE) for detai
 ---
 
 ## 📸 Screen Shots
-<img scr='screenshot.png' width='500px' height='500px'>
+<img src='screenshot.png' width='500' height='500' />
 
 ---
 
