@@ -5,7 +5,7 @@ from flask import Flask, render_template, request, jsonify, send_file
 from faster_whisper import WhisperModel
 from deep_translator import GoogleTranslator
 import edge_tts
-from flask_cors import CORS, cross_origin
+from flask_cors import CORS
 
 # Windows asyncio fix
 if sys.platform.startswith("win"):
@@ -14,9 +14,12 @@ if sys.platform.startswith("win"):
 app = Flask(__name__)
 
 # -------------------------
-# CORS setup
+# CORS setup — single unified config
 # -------------------------
-CORS(app, origins=["https://relaxed-bunny-932279.netlify.app"], supports_credentials=True)
+CORS(app, origins=[
+    "https://smart-voice-translator-using-python.vercel.app",
+    "https://relaxed-bunny-932279.netlify.app"
+], supports_credentials=True)
 
 RECORD_FOLDER = "record_videos"
 SPEAK_FOLDER = "speaking_video"
@@ -53,9 +56,11 @@ async def text_to_audio(text, voice, output_path):
 def index():
     return render_template("index.html")
 
-@app.route("/process_audio", methods=["POST"])
-@cross_origin(origins="https://smart-voice-translator-using-python.vercel.app")
+@app.route("/process_audio", methods=["POST", "OPTIONS"])
 def process_audio():
+    if request.method == "OPTIONS":
+        return "", 204
+
     try:
         if "audio" not in request.files:
             return jsonify({"error": "No audio file provided."}), 400
@@ -68,30 +73,37 @@ def process_audio():
 
         audio_file.save(input_path)
 
-        # 1️⃣ Detect + Transcribe
+        # 1. Detect + Transcribe
         text, detected_lang = speech_to_text(input_path)
         if not text:
             return jsonify({"error": "No speech detected."}), 400
 
-        # 2️⃣ Translate
+        # 2. Translate
         translated_text = GoogleTranslator(source=detected_lang, target=target_lang).translate(text)
 
-        # 3️⃣ Voice Mapping
+        # 3. Voice Mapping
         voice_map = {
             "en": "en-US-AriaNeural",
             "te": "te-IN-ShrutiNeural",
             "hi": "hi-IN-SwaraNeural",
-            "ur": "ur-PK-UzmaNeural"
+            "ur": "ur-PK-UzmaNeural",
+            "as": "as-IN-YashicaNeural",
+            "bn": "bn-IN-TanishaaNeural",
+            "ta": "ta-IN-PallaviNeural",
+            "pa": "pa-IN-OjasNeural",
+            "ja": "ja-JP-NanamiNeural",
+            "kn": "kn-IN-SapnaNeural",
+            "or": "or-IN-SubhasiniNeural",
         }
         selected_voice = voice_map.get(target_lang, "en-US-AriaNeural")
 
-        # 4️⃣ Generate Audio
+        # 4. Generate Audio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(text_to_audio(translated_text, selected_voice, output_path))
         loop.close()
 
-        # 5️⃣ Delete input file immediately
+        # 5. Delete input file immediately
         if os.path.exists(input_path):
             os.remove(input_path)
 
@@ -104,22 +116,25 @@ def process_audio():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/get_audio")
-@cross_origin(origin="https://relaxed-bunny-932279.netlify.app")
+
+@app.route("/get_audio", methods=["GET", "OPTIONS"])
 def get_audio():
+    if request.method == "OPTIONS":
+        return "", 204
+
     output_path = os.path.join(SPEAK_FOLDER, "output.mp3")
     if not os.path.exists(output_path):
         return jsonify({"error": "Audio not found."}), 404
 
     response = send_file(output_path, mimetype="audio/mpeg")
 
-    # Delete file after sending
     @response.call_on_close
     def cleanup():
         if os.path.exists(output_path):
             os.remove(output_path)
 
     return response
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
