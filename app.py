@@ -54,7 +54,7 @@ def index():
     return render_template("index.html")
 
 @app.route("/process_audio", methods=["POST"])
-@cross_origin(origin="https://relaxed-bunny-932279.netlify.app")
+@cross_origin(origins="https://smart-voice-translator-using-python.vercel.app")
 def process_audio():
     try:
         if "audio" not in request.files:
