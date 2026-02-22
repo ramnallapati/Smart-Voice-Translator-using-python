@@ -5,12 +5,14 @@ from flask import Flask, render_template, request, jsonify, send_file
 from faster_whisper import WhisperModel
 from deep_translator import GoogleTranslator
 import edge_tts
+from flask_cors import CORS
 
 # Windows asyncio fix
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 app = Flask(__name__)
+CORS(app)
 
 RECORD_FOLDER = "record_videos"
 SPEAK_FOLDER = "speaking_video"
