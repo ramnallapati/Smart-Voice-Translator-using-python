@@ -5,14 +5,13 @@
     <style>
         body {
             margin: 0;
-            font-family: Arial, sans-serif;
+            font-family: Arial;
             background: linear-gradient(135deg, #4e73df, #1cc88a);
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
         }
-
         .card {
             background: blueviolet;
             padding: 40px;
@@ -21,34 +20,23 @@
             text-align: center;
             box-shadow: 0 15px 40px rgba(0,0,0,0.2);
         }
-
         button, select {
             padding: 10px;
             margin: 10px;
             border-radius: 6px;
             border: none;
-            font-size: 16px;
         }
-
         button {
             background: #4e73df;
             color: white;
             cursor: pointer;
-            transition: background 0.3s;
         }
-
         button:hover {
             background: #2e59d9;
         }
-
-        button.recording {
-            background: #e74c3c; /* Red when recording */
-        }
-
         audio {
             width: 100%;
             margin-top: 15px;
-            border-radius: 6px;
         }
     </style>
 </head>
@@ -74,8 +62,8 @@
 
     <br>
 
-    <button id="startButton" onclick="startRecording()">Start</button>
-    <button id="stopButton" onclick="stopRecording()" disabled>Stop</button>
+    <button id="startBtn" onclick="startRecording()">Start</button>
+    <button id="stopBtn" onclick="stopRecording()">Stop</button>
 
     <p><b>Detected:</b> <span id="original"></span></p>
     <p><b>Translated:</b> <span id="translated"></span></p>
@@ -84,74 +72,64 @@
 </div>
 
 <script>
-    const BACKEND_URL = "https://smart-voice-translator-using-python.onrender.com";
-    let mediaRecorder;
-    let audioChunks = [];
+let mediaRecorder;
+let audioChunks = [];
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
 
-    async function startRecording() {
-        const startButton = document.getElementById('startButton');
-        const stopButton = document.getElementById('stopButton');
+async function startRecording() {
+    startBtn.style.background = "green";
+    stopBtn.style.background = "#4e73df";
 
-        startButton.classList.add('recording');  // Turn red
-        startButton.disabled = true;
-        stopButton.disabled = false;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
 
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
+    mediaRecorder.start();
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+}
 
-        mediaRecorder.start();
-        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    }
+function stopRecording() {
+    stopBtn.style.background = "red";
+    startBtn.style.background = "#4e73df";
 
-    function stopRecording() {
-        const startButton = document.getElementById('startButton');
-        const stopButton = document.getElementById('stopButton');
+    mediaRecorder.stop();
 
-        startButton.classList.remove('recording'); // Revert color
-        startButton.disabled = false;
-        stopButton.disabled = true;
+    mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: "audio/wav" });
+        const formData = new FormData();
+        formData.append("audio", blob);
+        formData.append("target_lang", document.getElementById("language").value);
 
-        mediaRecorder.stop();
+        const BACKEND_URL = "https://smart-voice-translator-using-python.onrender.com";
 
-        mediaRecorder.onstop = async () => {
-            try {
-                const blob = new Blob(audioChunks, { type: "audio/wav" });
-                const formData = new FormData();
+        try {
+            const response = await fetch(`${BACKEND_URL}/process_audio`, {
+                method: "POST",
+                body: formData
+            });
 
-                formData.append("audio", blob);
-                formData.append("target_lang", document.getElementById("language").value);
+            if (!response.ok) throw new Error("Failed to fetch");
 
-                const response = await fetch(`${BACKEND_URL}/process_audio`, {
-                    method: "POST",
-                    body: formData
-                });
+            const data = await response.json();
 
-                if (!response.ok) {
-                    throw new Error(`Server returned ${response.status}`);
-                }
-
-                const data = await response.json();
-
-                if (data.error) {
-                    alert(data.error);
-                    return;
-                }
-
-                document.getElementById("original").innerText = data.original_text;
-                document.getElementById("translated").innerText = data.translated_text;
-
-                // Play translated audio
-                const audio = document.getElementById("audioPlayer");
-                audio.src = `${BACKEND_URL}${data.audio_url}?t=${Date.now()}`;
-                audio.play();
-
-            } catch (err) {
-                console.error(err);
-                alert("Failed to process audio: " + err.message);
+            if (data.error) {
+                alert(data.error);
+                return;
             }
-        };
-    }
+
+            document.getElementById("original").innerText = data.original_text;
+            document.getElementById("translated").innerText = data.translated_text;
+
+            const audio = document.getElementById("audioPlayer");
+            audio.src = `${BACKEND_URL}${data.audio_url}?t=${new Date().getTime()}`;
+            audio.play();
+
+        } catch (err) {
+            alert("Error connecting to backend: " + err.message);
+        }
+    };
+}
 </script>
 
 </body>

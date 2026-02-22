@@ -14,12 +14,13 @@ if sys.platform.startswith("win"):
 app = Flask(__name__)
 CORS(app, origins=["https://relaxed-bunny-932279.netlify.app"])
 
+# Folders
 RECORD_FOLDER = "record_videos"
 SPEAK_FOLDER = "speaking_video"
-
 os.makedirs(RECORD_FOLDER, exist_ok=True)
 os.makedirs(SPEAK_FOLDER, exist_ok=True)
 
+# Load Whisper model once
 print("Loading Whisper model...")
 model = WhisperModel("base", device="auto", compute_type="auto")
 print("Model Loaded Successfully")
@@ -29,11 +30,8 @@ print("Model Loaded Successfully")
 # -------------------------
 def speech_to_text(audio_path):
     segments, info = model.transcribe(audio_path)
-    full_text = ""
-    for segment in segments:
-        full_text += segment.text + " "
+    full_text = " ".join([seg.text for seg in segments])
     return full_text.strip(), info.language
-
 
 # -------------------------
 # Text to Speech
@@ -42,14 +40,12 @@ async def text_to_audio(text, voice, output_path):
     tts = edge_tts.Communicate(text, voice=voice)
     await tts.save(output_path)
 
-
 # -------------------------
-# Route
+# Routes
 # -------------------------
 @app.route("/")
 def index():
     return render_template("index.html")
-
 
 @app.route("/process_audio", methods=["POST"])
 def process_audio():
@@ -59,17 +55,12 @@ def process_audio():
 
         input_path = os.path.join(RECORD_FOLDER, "record.wav")
         output_path = os.path.join(SPEAK_FOLDER, "output.mp3")
-
         audio_file.save(input_path)
 
         # 1️⃣ Detect + Transcribe
         text, detected_lang = speech_to_text(input_path)
-
         if not text:
             return jsonify({"error": "No speech detected."})
-
-        print("Detected:", detected_lang)
-        print("Text:", text)
 
         # 2️⃣ Translate
         translated_text = GoogleTranslator(
@@ -77,25 +68,19 @@ def process_audio():
             target=target_lang
         ).translate(text)
 
-        # 3️⃣ Voice Mapping
+        # 3️⃣ Select voice
         voice_map = {
             "en": "en-US-AriaNeural",
             "te": "te-IN-ShrutiNeural",
             "hi": "hi-IN-SwaraNeural",
             "ur": "ur-PK-UzmaNeural"
         }
-
         selected_voice = voice_map.get(target_lang, "en-US-AriaNeural")
 
         # 4️⃣ Generate Audio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(
-            text_to_audio(translated_text, selected_voice, output_path)
-        )
-        loop.close()
+        asyncio.run(text_to_audio(translated_text, selected_voice, output_path))
 
-        # 5️⃣ Delete input file immediately
+        # Delete input immediately
         if os.path.exists(input_path):
             os.remove(input_path)
 
@@ -108,21 +93,18 @@ def process_audio():
     except Exception as e:
         return jsonify({"error": str(e)})
 
-
 @app.route("/get_audio")
 def get_audio():
     output_path = os.path.join(SPEAK_FOLDER, "output.mp3")
-
     response = send_file(output_path, mimetype="audio/mpeg")
 
-    # Delete output file AFTER sending
+    # Delete output file after sending
     @response.call_on_close
     def cleanup():
         if os.path.exists(output_path):
             os.remove(output_path)
 
     return response
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
