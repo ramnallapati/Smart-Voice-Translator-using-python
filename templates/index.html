@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Language Translator</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial;
+            background: linear-gradient(135deg, #4e73df, #1cc88a);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .card {
+            background: blueviolet;
+            padding: 40px;
+            border-radius: 15px;
+            width: 420px;
+            text-align: center;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+
+        button, select {
+            padding: 10px;
+            margin: 10px;
+            border-radius: 6px;
+            border: none;
+        }
+
+        button {
+            background: #4e73df;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #2e59d9;
+        }
+
+        audio {
+            width: 100%;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>🎤 Smart Voice Translator</h2>
+
+    <select id="language">
+        <option value="en">English</option>
+        <option value="te">Telugu</option>
+        <option value="hi">Hindi</option>
+        <option value="ur">Urdu</option>
+        <option value="as">Assamese</option>
+        <option value="bn">Bengali</option>
+        <option value="bho">Bhojpuri</option>
+        <option value="ta">tamil</option>
+        <option value="pa">Punjabi</option>
+        <option value="or">Odia</option>
+        <option value="ja">Japanese</option>
+        <option value="kn">Kannada</option>
+        
+    </select>
+
+    <br>
+
+    <button onclick="startRecording()">Start</button>
+    <button onclick="stopRecording()">Stop</button>
+
+    <p><b>Detected:</b> <span id="original"></span></p>
+    <p><b>Translated:</b> <span id="translated"></span></p>
+
+    <audio id="audioPlayer" controls></audio>
+</div>
+
+<script>
+let mediaRecorder;
+let audioChunks = [];
+
+async function startRecording() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+
+    mediaRecorder.start();
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+}
+
+function stopRecording() {
+    mediaRecorder.stop();
+
+    mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: "audio/wav" });
+        const formData = new FormData();
+
+        formData.append("audio", blob);
+        formData.append("target_lang", document.getElementById("language").value);
+
+        const response = await fetch("/process_audio", {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+
+        document.getElementById("original").innerText = data.original_text;
+        document.getElementById("translated").innerText = data.translated_text;
+
+        const audio = document.getElementById("audioPlayer");
+        audio.src = data.audio_url + "?t=" + new Date().getTime();
+        audio.play();
+    };
+}
+</script>
+
+</body>
+</html>
