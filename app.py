@@ -12,7 +12,7 @@ if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["https://relaxed-bunny-932279.netlify.app"])
 
 RECORD_FOLDER = "record_videos"
 SPEAK_FOLDER = "speaking_video"
