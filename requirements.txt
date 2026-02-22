@@ -2,3 +2,4 @@ flask
 faster-whisper
 deep-translator
 edge-tts
+gunicorn
