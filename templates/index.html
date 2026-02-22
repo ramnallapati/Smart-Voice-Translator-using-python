@@ -10,60 +10,98 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
         }
         .card {
             background: blueviolet;
             padding: 40px;
             border-radius: 15px;
-            width: 420px;
+            width: 440px;
             text-align: center;
-            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
             color: white;
         }
-        button, select {
-            padding: 10px;
-            margin: 10px;
+        h2 { margin-bottom: 10px; }
+        select, button {
+            padding: 10px 16px;
+            margin: 8px;
             border-radius: 6px;
             border: none;
+            font-size: 14px;
         }
-        button {
-            background: #4e73df;
-            color: white;
-            cursor: pointer;
-            font-size: 15px;
+        button { background: #4e73df; color: white; cursor: pointer; }
+        button:hover:not(:disabled) { background: #2e59d9; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .info-box {
+            background: rgba(255,255,255,0.15);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin: 12px 0;
+            text-align: left;
+            font-size: 14px;
+            line-height: 1.8;
         }
-        button:hover { background: #2e59d9; }
-        audio { width: 100%; margin-top: 15px; }
-        #status { font-style: italic; color: #ffe; margin-top: 8px; min-height: 20px; }
+        .badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.25);
+            border-radius: 12px;
+            padding: 2px 10px;
+            font-size: 12px;
+            margin-left: 6px;
+        }
+        #status { font-style: italic; color: #ffe; min-height: 20px; margin: 6px 0; }
+        audio { width: 100%; margin-top: 12px; }
     </style>
 </head>
 <body>
 <div class="card">
     <h2>🎤 Smart Voice Translator</h2>
+    <p style="margin:4px 0 12px;font-size:13px;opacity:0.85;">
+        Speak in <b>any language</b> — it auto-detects!
+    </p>
 
+    <label style="font-size:13px;">Translate to:</label><br>
     <select id="language">
-        <option value="en">English</option>
+        <option value="en">🇺🇸 English</option>
+        <option value="hi">🇮🇳 Hindi</option>
         <option value="te">Telugu</option>
-        <option value="hi">Hindi</option>
-        <option value="ur">Urdu</option>
-        <option value="as">Assamese</option>
-        <option value="bn">Bengali</option>
         <option value="ta">Tamil</option>
-        <option value="pa">Punjabi</option>
-        <option value="or">Odia</option>
-        <option value="ja">Japanese</option>
         <option value="kn">Kannada</option>
+        <option value="ml">Malayalam</option>
+        <option value="mr">Marathi</option>
+        <option value="bn">Bengali</option>
+        <option value="gu">Gujarati</option>
+        <option value="pa">Punjabi</option>
+        <option value="ur">Urdu</option>
+        <option value="or">Odia</option>
+        <option value="as">Assamese</option>
+        <option value="ja">🇯🇵 Japanese</option>
+        <option value="zh">🇨🇳 Chinese</option>
+        <option value="ko">🇰🇷 Korean</option>
+        <option value="fr">🇫🇷 French</option>
+        <option value="de">🇩🇪 German</option>
+        <option value="es">🇪🇸 Spanish</option>
+        <option value="it">🇮🇹 Italian</option>
+        <option value="pt">🇧🇷 Portuguese</option>
+        <option value="ru">🇷🇺 Russian</option>
+        <option value="ar">🇸🇦 Arabic</option>
+        <option value="tr">🇹🇷 Turkish</option>
     </select>
 
     <br>
-
-    <button id="startBtn" onclick="startRecording()">🎙️ Start</button>
-    <button id="stopBtn" onclick="stopRecording()" disabled>⏹️ Stop</button>
+    <button id="startBtn" onclick="startRecording()">🎙️ Start Recording</button>
+    <button id="stopBtn"  onclick="stopRecording()" disabled>⏹️ Stop</button>
 
     <p id="status"></p>
-    <p><b>Detected:</b> <span id="original"></span></p>
-    <p><b>Translated:</b> <span id="translated"></span></p>
+
+    <div class="info-box" id="resultBox" style="display:none;">
+        <div>
+            🔍 <b>Detected:</b> <span id="detectedLang">—</span>
+            <span class="badge" id="confidence"></span>
+        </div>
+        <div>🗣️ <b>Original:</b> <span id="original"></span></div>
+        <div>🌐 <b>Translated (<span id="targetLangName"></span>):</b> <span id="translated"></span></div>
+    </div>
 
     <audio id="audioPlayer" controls></audio>
 </div>
@@ -72,26 +110,29 @@
     let mediaRecorder;
     let audioChunks = [];
 
-    const startBtn = document.getElementById("startBtn");
-    const stopBtn  = document.getElementById("stopBtn");
-    const status   = document.getElementById("status");
-
-    const BACKEND_URL = "https://smart-voice-translator-using-python.onrender.com";
+    const startBtn      = document.getElementById("startBtn");
+    const stopBtn       = document.getElementById("stopBtn");
+    const status        = document.getElementById("status");
+    const resultBox     = document.getElementById("resultBox");
 
     async function startRecording() {
         try {
+            resultBox.style.display = "none";
+            document.getElementById("audioPlayer").src = "";
+
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
+            mediaRecorder  = new MediaRecorder(stream);
+            audioChunks    = [];
 
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
             mediaRecorder.start();
 
             startBtn.disabled = true;
             startBtn.style.background = "green";
-            stopBtn.disabled = false;
-            stopBtn.style.background = "#e74c3c";
-            status.innerText = "Recording...";
+            stopBtn.disabled  = false;
+            stopBtn.style.background  = "#e74c3c";
+            status.innerText  = "🔴 Recording... Speak now!";
+
         } catch (err) {
             alert("Microphone access denied: " + err.message);
         }
@@ -105,18 +146,18 @@
 
         startBtn.disabled = false;
         startBtn.style.background = "#4e73df";
-        stopBtn.disabled = true;
-        stopBtn.style.background = "#4e73df";
-        status.innerText = "Processing...";
+        stopBtn.disabled  = true;
+        stopBtn.style.background  = "#4e73df";
+        status.innerText  = "⏳ Processing... please wait";
 
         mediaRecorder.onstop = async () => {
-            const blob = new Blob(audioChunks, { type: "audio/wav" });
+            const blob     = new Blob(audioChunks, { type: "audio/wav" });
             const formData = new FormData();
             formData.append("audio", blob, "record.wav");
             formData.append("target_lang", document.getElementById("language").value);
 
             try {
-                const response = await fetch(`${BACKEND_URL}/process_audio`, {
+                const response = await fetch(`/process_audio`, {
                     method: "POST",
                     body: formData
                 });
@@ -129,13 +170,19 @@
                     return;
                 }
 
-                document.getElementById("original").innerText   = data.original_text;
-                document.getElementById("translated").innerText = data.translated_text;
+                // Show results
+                document.getElementById("detectedLang").innerText  = data.detected_lang_name;
+                document.getElementById("confidence").innerText     = data.confidence + "% sure";
+                document.getElementById("original").innerText       = data.original_text;
+                document.getElementById("targetLangName").innerText = data.target_lang_name;
+                document.getElementById("translated").innerText     = data.translated_text;
+
+                resultBox.style.display = "block";
+                status.innerText = "✅ Done!";
 
                 const audio = document.getElementById("audioPlayer");
-                audio.src = `${BACKEND_URL}${data.audio_url}?t=${Date.now()}`;
+                audio.src   = `${data.audio_url}?t=${Date.now()}`;
                 audio.play();
-                status.innerText = "Done!";
 
             } catch (err) {
                 alert("Error connecting to backend: " + err.message);
